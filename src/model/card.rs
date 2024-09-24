@@ -1,4 +1,4 @@
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Card {
     UNKNOWN,
     HK,
@@ -56,5 +56,3 @@ pub enum Card {
     T21,
     T22,
 }
-
-pub const MAX_SIZE: usize = 54;
