@@ -1,14 +1,44 @@
 use super::card::Card;
 use super::game_type::GameType;
 use regex::Regex;
+use std::iter;
 use std::str::FromStr;
 use std::sync::LazyLock;
 
 const HAND_SIZE: usize = 12;
 const STICH_SIZE: usize = 4;
 const NUM_PLAYERS: usize = 4;
-const TALON_SIZE: usize = 6;
 const NUM_CARDS: usize = 54;
+
+const CARD_REGEX_STR: &str = r"(?i)[HK][1-4KDPB]|[PX](?:[7-9KDPB]|10)|T(?:2[0-2]|1[0-9]|[1-9])|\.";
+static CARD_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(CARD_REGEX_STR).unwrap());
+
+const CARDS_REGEX_STR: &str = r#"(?ix)
+    ^(?<talon0>(?:[HK][1-4KDPB]|[PX](?:[7-9KDPB]|10)|T(?:2[0-2]|1[0-9]|[1-9])|\.){3})
+        /(?<talon1>(?:[HK][1-4KDPB]|[PX](?:[7-9KDPB]|10)|T(?:2[0-2]|1[0-9]|[1-9])|\.){3})
+    \#(?<player0hand>(?:[HK][1-4KDPB]|[PX](?:[7-9KDPB]|10)|T(?:2[0-2]|1[0-9]|[1-9])|\.){0,12})
+        /(?<player0stiche>(?:[HK][1-4KDPB]|[PX](?:[7-9KDPB]|10)|T(?:2[0-2])|1[0-9]|[1-9]|\.){0,54})
+    \#(?<player1hand>(?:[HK][1-4KDPB]|[PX](?:[7-9KDPB]|10)|T(?:2[0-2]|1[0-9]|[1-9])|\.){0,12})
+        /(?<player1stiche>(?:[HK][1-4KDPB]|[PX](?:[7-9KDPB]|10)|T(?:2[0-2])|1[0-9]|[1-9]|\.){0,54})
+    \#(?<player2hand>(?:[HK][1-4KDPB]|[PX](?:[7-9KDPB]|10)|T(?:2[0-2]|1[0-9]|[1-9])|\.){0,12})
+        /(?<player2stiche>(?:[HK][1-4KDPB]|[PX](?:[7-9KDPB]|10)|T(?:2[0-2])|1[0-9]|[1-9]|\.){0,54})
+    \#(?<player3hand>(?:[HK][1-4KDPB]|[PX](?:[7-9KDPB]|10)|T(?:2[0-2]|1[0-9]|[1-9])|\.){0,12})
+        /(?<player3stiche>(?:[HK][1-4KDPB]|[PX](?:[7-9KDPB]|10)|T(?:2[0-2])|1[0-9]|[1-9]|\.){0,54})
+    \#(?<stich>(?:[HK][1-4KDPB]|[PX](?:[7-9KDPB]|10)|T(?:2[0-2]|1[0-9]|[1-9])|\.){0,4})$"#;
+static CARDS_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(CARDS_REGEX_STR).unwrap());
+
+const GAME_TYPE_REGEX_STR: &str = r#"(?ix)
+    (?<game>SPD|SR|BR|BO|PD|SD|PO[1-3]|PB[1-3]|P[1-3]|[TRSBD])(?<player>[1-4])"#;
+static GAME_TYPE_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(GAME_TYPE_REGEX_STR).unwrap());
+
+const GAME_REGEX_STR: &str = r#"(?ix)
+    ^(?<gameAndPlayer>(?:(?:SPD|SR|BR|BO|PD|SD|PO[1-3]|PB[1-3]|P[1-3]|[TRSBD])[1-4]){1,4})(?<king>[HKPX]K|\-)(?<teammate>[1-4-])(?<talon>12|[12-])$"#;
+static GAME_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(GAME_REGEX_STR).unwrap());
+
+const CALL_REGEX_STR: &str = r#"(?ix)
+    (?<player0>1?2?3?4?T?U?K?V?)/(?<player1>1?2?3?4?T?U?K?V?)/(?<player2>1?2?3?4?T?U?K?V?)/(?<player3>1?2?3?4?T?U?K?V?)"#;
+static CALL_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(CALL_REGEX_STR).unwrap());
 
 #[derive(Debug, Clone, Copy)]
 pub struct CardCollection<const N: usize = NUM_CARDS> {
@@ -16,12 +46,56 @@ pub struct CardCollection<const N: usize = NUM_CARDS> {
     pub excluded: [Option<Card>; NUM_CARDS],
 }
 
-impl CardCollection {
+impl<const N: usize> CardCollection<N> {
+    pub fn new() -> Self {
+        Self {
+            cards: [None; N],
+            excluded: [None; NUM_CARDS],
+        }
+    }
     pub fn contains(&self, card: Card) -> bool {
         self.cards.contains(&Some(card))
     }
     pub fn excludes(&self, card: Card) -> bool {
         self.excluded.contains(&Some(card))
+    }
+}
+
+impl<const N: usize> TryFrom<&Vec<Card>> for CardCollection<N> {
+    type Error = &'static str;
+
+    fn try_from(value: &Vec<Card>) -> Result<Self, Self::Error> {
+        Ok(CardCollection {
+            cards: value
+                .iter()
+                .map(|card| Some(*card))
+                .collect::<Vec<_>>()
+                .try_into()
+                .map_err(|_| "Invalid vector length")?,
+            excluded: [None; NUM_CARDS],
+        })
+    }
+}
+
+impl<const N: usize> FromStr for CardCollection<N> {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(CardCollection::<N> {
+            cards: CARD_REGEX
+                .find_iter(s)
+                .map(|mtch| {
+                    Card::from_str(mtch.as_str())
+                        .map(|card| Some(card))
+                        .map_err(|_| "Invalid card")
+                })
+                .chain(iter::repeat(Ok(None)))
+                .take(N)
+                .collect::<Result<Vec<_>, _>>()?
+                .try_into()
+                .unwrap(),
+            excluded: [None; NUM_CARDS],
+        })
     }
 }
 
@@ -32,7 +106,7 @@ pub struct Player {
     pub calls: Calls,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Calls {
     pub typ: Option<GameType>,
     pub called_king: Option<Card>,
@@ -51,19 +125,9 @@ pub struct Calls {
 pub struct GameState {
     pub players: [Player; NUM_PLAYERS],
     pub stich: CardCollection<STICH_SIZE>,
-    pub talon: CardCollection<TALON_SIZE>,
+    pub talon: [CardCollection<3>; 2],
+    pub kleinen_stechen_großen: bool,
 }
-
-const CARD_REGEX_STR: &str = r"(?i)[HK][1-4KDPB]|[PX](?:[7-9KDPB]|10)|T(?:[1-9]|1[0-9]|2[0-2])|\.";
-const CARDS_REGEX_STR: &str = r#"(?ix)
-    ^(?<talon0>(?:[HK][1-4KDPB]|[PX](?:[7-9KDPB]|10)|T(?:[1-9]|1[0-9]|2[0-2])|\.){3})
-    /(?<talon1>(?:[HK][1-4KDPB]|[PX](?:[7-9KDPB]|10)|T(?:[1-9]|1[0-9]|2[0-2])|\.){3})
-    \#(?<player0>(?:[HK][1-4KDPB]|[PX](?:[7-9KDPB]|10)|T(?:2[0-2]|1[0-9]|[1-9])|\.){0,12}/(?:[HK][1-4KDPB]|[PX](?:[7-9KDPB]|10)|T(?:[1-9]|1[0-9]|2[0-2])|\.){0,54})
-    \#(?<player1>(?:[HK][1-4KDPB]|[PX](?:[7-9KDPB]|10)|T(?:2[0-2]|1[0-9]|[1-9])|\.){0,12}/(?:[HK][1-4KDPB]|[PX](?:[7-9KDPB]|10)|T(?:[1-9]|1[0-9]|2[0-2])|\.){0,54})
-    \#(?<player2>(?:[HK][1-4KDPB]|[PX](?:[7-9KDPB]|10)|T(?:2[0-2]|1[0-9]|[1-9])|\.){0,12}/(?:[HK][1-4KDPB]|[PX](?:[7-9KDPB]|10)|T(?:[1-9]|1[0-9]|2[0-2])|\.){0,54})
-    \#(?<player3>(?:[HK][1-4KDPB]|[PX](?:[7-9KDPB]|10)|T(?:2[0-2]|1[0-9]|[1-9])|\.){0,12}/(?:[HK][1-4KDPB]|[PX](?:[7-9KDPB]|10)|T(?:[1-9]|1[0-9]|2[0-2])|\.){0,54})
-    \#(?<stich>(?:[HK][1-4KDPB]|[PX](?:[7-9KDPB]|10)|T(?:2[0-2]|1[0-9]|[1-9])|\.){0,4})$"#;
-static CARDS_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(CARDS_REGEX_STR).unwrap());
 
 impl FromStr for GameState {
     type Err = &'static str;
@@ -76,26 +140,162 @@ impl FromStr for GameState {
         {
             // Parse cards
             let Some(captures) = CARDS_REGEX.captures(&cards_string) else {
-                return Err("Invalid cards group");
+                return Err("Invalid TAF cards group");
             };
 
-            let talon0 = captures.name("talon0").unwrap().as_str();
-            let talon1 = captures.name("talon1").unwrap().as_str();
-            let player0 = captures.name("player0").unwrap().as_str();
-            let player1 = captures.name("player1").unwrap().as_str();
-            let player2 = captures.name("player2").unwrap().as_str();
-            let player3 = captures.name("player3").unwrap().as_str();
-            let stich = captures.name("stich").unwrap().as_str();
-            println!(
-                "talon0: {}\ntalon1: {}\nplayer0: {}\nplayer1: {}\nplayer2: {}\nplayer3: {}\nstich: {}",
-                talon0, talon1, player0, player1, player2, player3, stich
-            );
+            let talon0: CardCollection<3> = captures.name("talon0").unwrap().as_str().parse()?;
+            let talon1: CardCollection<3> = captures.name("talon1").unwrap().as_str().parse()?;
+
+            let mut players: [Player; 4] = [
+                ("player0hand", "player0stiche"),
+                ("player1hand", "player1stiche"),
+                ("player2hand", "player2stiche"),
+                ("player3hand", "player3stiche"),
+            ]
+            .iter()
+            .map(
+                |(hand_group, stiche_group)| -> Result<Player, &'static str> {
+                    Ok(Player {
+                        hand: captures.name(hand_group).unwrap().as_str().parse()?,
+                        stiche: captures.name(stiche_group).unwrap().as_str().parse()?,
+                        calls: Calls::default(),
+                    })
+                },
+            )
+            .collect::<Result<Vec<_>, _>>()?
+            .try_into()
+            .unwrap();
+
+            let stich = captures.name("stich").unwrap().as_str().parse()?;
 
             // Parse game
+            let Some(captures) = GAME_REGEX.captures(&game_string) else {
+                return Err("Invalid TAF game group");
+            };
 
-            return Err("Ok");
+            let king: Option<Card> = match captures.name("king").unwrap().as_str() {
+                "-" => None,
+                s => Some(Card::from_str(s)?),
+            };
+            let teammate: Option<usize> = match captures.name("teammate").unwrap().as_str() {
+                "-" => None,
+                s => Some(s.parse().map_err(|_| "Invalid teammate")?),
+            };
+            let talon: Option<usize> = match captures.name("talon").unwrap().as_str() {
+                "-" => None,
+                s => Some(s.parse().map_err(|_| "Invalid talon")?),
+            };
+
+            let game_and_player: &str = captures.name("gameAndPlayer").unwrap().as_str();
+            for game_and_player in GAME_TYPE_REGEX.captures_iter(game_and_player) {
+                let game_type: GameType = game_and_player.name("game").unwrap().as_str().parse()?;
+                let player: usize = game_and_player
+                    .name("player")
+                    .unwrap()
+                    .as_str()
+                    .parse()
+                    .map_err(|_| "Invalid game player index")?;
+
+                if player < 1 || player > NUM_PLAYERS {
+                    return Err("Invalid game player index");
+                }
+                players[player - 1].calls.typ = Some(game_type);
+                players[player - 1].calls.called_king = king;
+                players[player - 1].calls.taken_talon = talon;
+            }
+
+            // Parse calls
+            let Some(captures) = CALL_REGEX.captures(&calls_string) else {
+                return Err("Invalid TAF calls group");
+            };
+
+            [
+                ("player0", 0),
+                ("player1", 1),
+                ("player2", 2),
+                ("player3", 3),
+            ]
+            .iter()
+            .map(|(player_group, player_index)| {
+                captures
+                    .name(player_group)
+                    .unwrap()
+                    .as_str()
+                    .chars()
+                    .map(|c| {
+                        match c {
+                            '1' => players[*player_index].calls.pagat = true,
+                            '2' => players[*player_index].calls.uhu = true,
+                            '3' => players[*player_index].calls.pelikan = true,
+                            '4' => players[*player_index].calls.quapil = true,
+                            'T' => players[*player_index].calls.trull = true,
+                            'K' => players[*player_index].calls.kings = true,
+                            'U' => players[*player_index].calls.ultimo = true,
+                            'V' => players[*player_index].calls.valat = true,
+                            _ => return Err("Invalid call"),
+                        }
+                        Ok(())
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+            // Parse kleinen_stechen_großen
+            let kleinen_stechen_großen: bool = match kleinen_stechen_großen_string {
+                &"J" => true,
+                &"-" => false,
+                _ => return Err("Invalid kleinen_stechen_großen"),
+            };
+
+            // TODO: Parse spritzen
+
+            Ok(GameState {
+                players,
+                stich,
+                talon: [talon0, talon1],
+                kleinen_stechen_großen,
+            })
         } else {
-            return Err("Missing TAF groups");
+            Err("Missing TAF groups")
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn card_collection_from_str() -> Result<(), &'static str> {
+        assert_eq!(
+            CardCollection::<3>::from_str("H1H2H3")?.cards,
+            [Some(Card::H1), Some(Card::H2), Some(Card::H3)],
+        );
+        assert_eq!(
+            CardCollection::<3>::from_str("H1H2")?.cards,
+            [Some(Card::H1), Some(Card::H2), None],
+        );
+        assert_eq!(
+            CardCollection::<3>::from_str("H1H2H3H4")?.cards,
+            [Some(Card::H1), Some(Card::H2), Some(Card::H3)],
+        );
+        assert_eq!(
+            CardCollection::<3>::from_str("XKXBXD")?.cards,
+            [Some(Card::XK), Some(Card::XB), Some(Card::XD)],
+        );
+        assert_ne!(
+            CardCollection::<3>::from_str("XKXBXD")?.cards,
+            [Some(Card::HK), Some(Card::HK), Some(Card::UNKNOWN)],
+        );
+        assert_eq!(CardCollection::<12>::from_str("")?.cards, [None; 12]);
+        assert_eq!(
+            CardCollection::<6>::from_str("......")?.cards,
+            [Some(Card::UNKNOWN); 6]
+        );
+        assert_eq!(
+            CardCollection::<6>::from_str("P9P8P7")?.excluded,
+            [None; 54]
+        );
+        Ok(())
     }
 }

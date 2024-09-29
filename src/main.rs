@@ -5,7 +5,6 @@ use model::game::GameState;
 mod model;
 
 fn main() {
-    println!("Hello, world!");
     match GameState::from_str(
         ".../...#hdt1t3t5t6k1k2k3k4kbkp/#.........../#.........../#.........../#hkx8t22t21 R1XK-1 1K/T// - R12",
     ) {
