@@ -1,6 +1,8 @@
 use super::card::Card;
 use super::game_type::GameType;
 use regex::Regex;
+use std::collections::HashSet;
+use std::fmt::Debug;
 use std::iter;
 use std::str::FromStr;
 use std::sync::LazyLock;
@@ -40,7 +42,7 @@ const CALL_REGEX_STR: &str = r#"(?ix)
     (?<player0>1?2?3?4?T?U?K?V?)/(?<player1>1?2?3?4?T?U?K?V?)/(?<player2>1?2?3?4?T?U?K?V?)/(?<player3>1?2?3?4?T?U?K?V?)"#;
 static CALL_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(CALL_REGEX_STR).unwrap());
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Eq)]
 pub struct CardCollection<const N: usize = NUM_CARDS> {
     pub cards: [Option<Card>; N],
     pub excluded: [Option<Card>; NUM_CARDS],
@@ -99,14 +101,61 @@ impl<const N: usize> FromStr for CardCollection<N> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+impl<const N: usize> PartialEq for CardCollection<N> {
+    fn eq(&self, other: &Self) -> bool {
+        let self_cards: HashSet<Option<Card>> = self.cards.try_into().unwrap();
+        let other_cards: HashSet<Option<Card>> = other.cards.try_into().unwrap();
+        let self_excluded: HashSet<Option<Card>> = self.excluded.try_into().unwrap();
+        let other_excluded: HashSet<Option<Card>> = other.excluded.try_into().unwrap();
+        let self_num_none = self.cards.iter().filter(|card| card.is_none()).count();
+        let other_num_none = other.cards.iter().filter(|card| card.is_none()).count();
+        self_cards == other_cards
+            && self_excluded == other_excluded
+            && self_num_none == other_num_none
+    }
+}
+
+impl<const N: usize> Debug for CardCollection<N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let cards: Vec<String> = self
+            .cards
+            .iter()
+            .filter(|card| card.is_some())
+            .map(|card| match card {
+                Some(Card::UNKNOWN) => ".".to_string(),
+                Some(card) => format!("{card:?}"),
+                None => "".to_string(),
+            })
+            .collect();
+        let excluded: Vec<String> = self
+            .excluded
+            .iter()
+            .filter(|card| card.is_some())
+            .map(|card| match card {
+                Some(Card::UNKNOWN) => ".".to_string(),
+                Some(card) => format!("{card:?}"),
+                None => "".to_string(),
+            })
+            .collect();
+        write!(
+            f,
+            "CardCollection {{ cards: {} + {} None, excluded: {} + {} None }}",
+            cards.join(" "),
+            N - cards.len(),
+            excluded.join(" "),
+            NUM_CARDS - excluded.len(),
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Player {
     pub hand: CardCollection<HAND_SIZE>,
     pub stiche: CardCollection,
     pub calls: Calls,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Calls {
     pub typ: Option<GameType>,
     pub called_king: Option<Card>,
@@ -121,7 +170,7 @@ pub struct Calls {
     pub valat: bool,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GameState {
     pub players: [Player; NUM_PLAYERS],
     pub stich: CardCollection<STICH_SIZE>,
@@ -242,7 +291,7 @@ impl FromStr for GameState {
 
             // Parse kleinen_stechen_großen
             let kleinen_stechen_großen: bool = match kleinen_stechen_großen_string {
-                &"J" => true,
+                &"J" | &"j" => true,
                 &"-" => false,
                 _ => return Err("Invalid kleinen_stechen_großen"),
             };
@@ -266,36 +315,211 @@ mod tests {
     use super::*;
 
     #[test]
-    fn card_collection_from_str() -> Result<(), &'static str> {
+    fn card_collection_from_str() {
         assert_eq!(
-            CardCollection::<3>::from_str("H1H2H3")?.cards,
+            CardCollection::<3>::from_str("H1H2H3").unwrap().cards,
             [Some(Card::H1), Some(Card::H2), Some(Card::H3)],
         );
         assert_eq!(
-            CardCollection::<3>::from_str("H1H2")?.cards,
+            CardCollection::<3>::from_str("H1H2").unwrap().cards,
             [Some(Card::H1), Some(Card::H2), None],
         );
         assert_eq!(
-            CardCollection::<3>::from_str("H1H2H3H4")?.cards,
+            CardCollection::<3>::from_str("H1H2H3H4").unwrap().cards,
             [Some(Card::H1), Some(Card::H2), Some(Card::H3)],
         );
         assert_eq!(
-            CardCollection::<3>::from_str("XKXBXD")?.cards,
+            CardCollection::<3>::from_str("XKXBXD").unwrap().cards,
             [Some(Card::XK), Some(Card::XB), Some(Card::XD)],
         );
         assert_ne!(
-            CardCollection::<3>::from_str("XKXBXD")?.cards,
+            CardCollection::<3>::from_str("XKXBXD").unwrap().cards,
             [Some(Card::HK), Some(Card::HK), Some(Card::UNKNOWN)],
         );
-        assert_eq!(CardCollection::<12>::from_str("")?.cards, [None; 12]);
         assert_eq!(
-            CardCollection::<6>::from_str("......")?.cards,
+            CardCollection::<12>::from_str("").unwrap().cards,
+            [None; 12]
+        );
+        assert_eq!(
+            CardCollection::<12>::from_str("asdaP07sd").unwrap().cards,
+            [None; 12]
+        );
+        assert_eq!(
+            CardCollection::<6>::from_str("......").unwrap().cards,
             [Some(Card::UNKNOWN); 6]
         );
         assert_eq!(
-            CardCollection::<6>::from_str("P9P8P7")?.excluded,
+            CardCollection::<6>::from_str("P9P8P7").unwrap().excluded,
             [None; 54]
         );
-        Ok(())
+    }
+
+    #[test]
+    fn card_collection_eq() {
+        assert_eq!(
+            CardCollection::<3>::from_str("H1H2H3").unwrap(),
+            CardCollection::<3>::from_str("H1H2H3").unwrap(),
+        );
+        assert_eq!(
+            CardCollection::<3>::from_str("H1H2H3").unwrap(),
+            CardCollection::<3>::from_str("H3H2H1").unwrap(),
+        );
+        assert_ne!(
+            CardCollection::<3>::from_str("H1H2H3").unwrap(),
+            CardCollection::<3>::from_str("H1H2H4").unwrap(),
+        );
+        assert_eq!(
+            CardCollection::<3>::from_str("H1H2H3.").unwrap(),
+            CardCollection::<3>::from_str("H1H2H3.").unwrap(),
+        );
+        assert_eq!(
+            CardCollection::<4>::from_str("H1H2H3.").unwrap(),
+            CardCollection::<4>::from_str("H1H2H3.").unwrap(),
+        );
+        assert_eq!(
+            CardCollection::<5>::from_str("H1H2H3..").unwrap(),
+            CardCollection::<5>::from_str("H1H2H3..").unwrap(),
+        );
+        assert_eq!(
+            CardCollection::<5>::from_str("H1H2H3..").unwrap(),
+            CardCollection::<5>::from_str("H2H1H3..").unwrap(),
+        );
+        assert_ne!(
+            CardCollection::<5>::from_str("H1H2H3..").unwrap(),
+            CardCollection::<5>::from_str("H1H2H3.").unwrap(),
+        );
+        assert_eq!(
+            CardCollection::<12>::from_str("hdt1t3t5t6k1k2k3k4kbkp").unwrap(),
+            CardCollection::<12>::from_str("hdt1t3t5t6k1k2k3k4kbkp").unwrap(),
+        );
+        assert_eq!(
+            CardCollection::<54>::new(),
+            CardCollection::<54>::from_str("").unwrap(),
+        );
+        assert_eq!(
+            CardCollection::<54>::from_str("xkxbxd...").unwrap(),
+            CardCollection::<54>::from_str("xdxbxk...").unwrap(),
+        );
+        assert_ne!(
+            CardCollection::<54>::from_str("xkxbxd..").unwrap(),
+            CardCollection::<54>::from_str("xdxbxk...").unwrap(),
+        );
+    }
+
+    #[test]
+    fn game_state_from_str() {
+        // Start of Rufer
+        assert_eq!(
+            GameState::from_str(
+                ".../...#hdt1t3t5t6k1k2k3k4kbkp/#.........../#.........../#.........../#hkx8t22t21 R1XK-1 1K/T// j -"
+            )
+            .unwrap(),
+            GameState {
+                players: [
+                    Player {
+                        hand: CardCollection::from_str("hdt1t3t5t6k1k2k3k4kbkp").unwrap(),
+                        stiche: CardCollection::new(),
+                        calls: Calls {
+                            typ: Some(GameType::R),
+                            taken_talon: Some(1),
+                            pagat: true,
+                            kings: true,
+                            called_king: Some(Card::XK),
+                            ..Default::default()
+                        },
+                    },
+                    Player {
+                        hand: CardCollection::from_str("...........").unwrap(),
+                        stiche: CardCollection::new(),
+                        calls: Calls {
+                            trull: true,
+                            ..Default::default()
+                        }
+                    },
+                    Player {
+                        hand: CardCollection::from_str("...........").unwrap(),
+                        stiche: CardCollection::new(),
+                        calls: Calls::default(),
+                    },
+                    Player {
+                        hand: CardCollection::from_str("...........").unwrap(),
+                        stiche: CardCollection::new(),
+                        calls: Calls::default(),
+                    },
+                ],
+                stich: CardCollection::<4>::from_str("HKX8T22T21").unwrap(),
+                talon: [
+                    CardCollection::<3>::from_str("...").unwrap(),
+                    CardCollection::<3>::from_str("...").unwrap(),
+                ],
+                kleinen_stechen_großen: true,
+            }
+        );
+    }
+
+    #[test]
+    fn game_state_eq() {
+        assert_eq!(
+            GameState {
+                players: [
+                    Player {
+                        hand: CardCollection::<12>::from_str("H1H3T5T6K1K2K3K4KBKP....").unwrap(),
+                        stiche: CardCollection::<54>::from_str("..............").unwrap(),
+                        calls: Calls::default(),
+                    },
+                    Player {
+                        hand: CardCollection::<12>::from_str("H8T22T21").unwrap(),
+                        stiche: CardCollection::<54>::from_str("..............").unwrap(),
+                        calls: Calls::default(),
+                    },
+                    Player {
+                        hand: CardCollection::<12>::from_str("HK").unwrap(),
+                        stiche: CardCollection::<54>::from_str("..............").unwrap(),
+                        calls: Calls::default(),
+                    },
+                    Player {
+                        hand: CardCollection::<12>::from_str("HX").unwrap(),
+                        stiche: CardCollection::<54>::from_str("..............").unwrap(),
+                        calls: Calls::default(),
+                    },
+                ],
+                stich: CardCollection::<4>::from_str("T12....").unwrap(),
+                talon: [
+                    CardCollection::<3>::from_str("HDT").unwrap(),
+                    CardCollection::<3>::from_str("HDT").unwrap(),
+                ],
+                kleinen_stechen_großen: true,
+            },
+            GameState {
+                players: [
+                    Player {
+                        hand: CardCollection::<12>::from_str("H1H3T5T6K1K2K3K4KBKP....").unwrap(),
+                        stiche: CardCollection::<54>::from_str("..............").unwrap(),
+                        calls: Calls::default(),
+                    },
+                    Player {
+                        hand: CardCollection::<12>::from_str("H8T22T21").unwrap(),
+                        stiche: CardCollection::<54>::from_str("..............").unwrap(),
+                        calls: Calls::default(),
+                    },
+                    Player {
+                        hand: CardCollection::<12>::from_str("HK").unwrap(),
+                        stiche: CardCollection::<54>::from_str("..............").unwrap(),
+                        calls: Calls::default(),
+                    },
+                    Player {
+                        hand: CardCollection::<12>::from_str("HX").unwrap(),
+                        stiche: CardCollection::<54>::from_str("..............").unwrap(),
+                        calls: Calls::default(),
+                    },
+                ],
+                stich: CardCollection::<4>::from_str("T12....").unwrap(),
+                talon: [
+                    CardCollection::<3>::from_str("HDT").unwrap(),
+                    CardCollection::<3>::from_str("HDT").unwrap(),
+                ],
+                kleinen_stechen_großen: true,
+            }
+        );
     }
 }
