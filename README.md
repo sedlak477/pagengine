@@ -2,7 +2,7 @@
 
 Pagengine ist eine Traock-Engine zum Analysieren von Tarockspielen und um optimale Spielzüge zu finden.
 
-Zur Beschreibung von Spielen wird das [Tarockaustauschformat (TAF)](/ROCK%20Dateiformat.md) und das [ROCK Dateiformat](/ROCK%20Dateiformat.md) verwendet.
+Zur Beschreibung von Spielen wird das [Tarockaustauschformat (TAF)](/ROCK%20Dateiformat.md#tarockaustauschformat-taf) und das [ROCK Dateiformat](/ROCK%20Dateiformat.md) verwendet.
 
 ## Build
 
