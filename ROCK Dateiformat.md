@@ -7,9 +7,10 @@ Die Datei beschreibt den Verlauf eines Tarockspiels und wird mit der Dateiendung
 
 | Begriff | Definition |
 | ------- | ---------- |
-| Tarockspiel | Ein Tarockspiel startet wenn "Mein Spiel" gesagt wurde und endet mit dem letzen Stich. |
+| Tarockspiel | Ein Tarockspiel startet wenn "Mein Spiel" gesagt wurde und endet wenn die Stiche ausgezählt wurden und Geld ausgezahlt wurde. |
 | Tarockrunde | Eine Tarockrunde startet mit dem ersten Tarockspiel und endet nachdem das letzte Tarockspiel gespielt wurde und der Endstand ausgezählt wurde. |
-| Spielzug | Ein Spielzug ist die Verschiebung einer Karte von einer Position an eine Andere. |
+| Spielzug | Ein Spielzug ist die Verschiebung einer oder mehrerer Karten von einem Kartenstapel in einen Anderen. E.g. Ausspielen einer Karte, Nehmen eines gewonnenen Stichs, Hinunterlegen von Karten nachdem man in den Talon schauen durfte. |
+| Kartenstapel | Eine semantisch getrennte Menge an Spielkarten. E.g. eine Hand, ein Stichstapel, eine Hälfe des Talons, der derzeitige Stich. |
 
 ## Tarockaustauschformat (TAF)
 
@@ -18,7 +19,7 @@ Das Tarockaustauschformat (TAF) ist eine Zeichenkette, die den Zustand eines Tar
 Sie setzt sich aus fünf Gruppen zusammen die durch Leerzeichen voneinander getrennt sind:
 
 ```text
-<Karten> <Spiel> <Ansagen> <Kleinen stechen die Großen> <Spritzen>
+<Karten> <Spiel> <Letzer Stich> <Ansagen> <Kleinen stechen die Großen> <Spritzen>
 ```
 
 Die gesammte Zeichenkette kann sowohl groß als auch klein geschrieben werden.
@@ -26,15 +27,16 @@ Mischen von Groß- und Kleinschreibung ist ebenfalls erlaubt.
 
 Beispiel für den Ausgangszustand eines Rufers aus Sicht von Spieler:in 1:
 
-1. Talon und Karten von Spieler:in 1 sind bekannt.
-2. Spieler:in 1 spielt einen Rufer, ruft den Kreuz König und nimmt den 1. Talon (der mit dem König drinnen).
-3. Spieler:in 1 sagt den Pagat und die Könige an. Spieler:in 2 sagt die Trull an.
-4. Kleinen stechen die Großen wird nicht gespielt.
-5. Spieler:in 2 spritzt Rufer von Spieler:in 1.
-
 ```text
-XKX10X9/H4H3H2#HkXkT1T3T5T6K1K2K3K4KBKP#X10X9HD/............/#............/#............/# R1XK-1 1K/T// - R12
+XKX10X9/H4H3H2#HkXkT1T3T5T6K1K2K3K4KBKP#X10X9HD/............/#............/#............/# R1XK-1 - 1K/T// - R12
 ```
+
+1. Talon und Karten von Spieler:in 1 sind bekannt.
+1. Spieler:in 1 spielt einen Rufer, ruft den Kreuz König und nimmt den 1. Talon (der mit dem König drinnen).
+1. Es wurde noch kein Stich gemacht.
+1. Spieler:in 1 sagt den Pagat und die Könige an. Spieler:in 2 sagt die Trull an.
+1. Kleinen stechen die Großen wird nicht gespielt.
+1. Spieler:in 2 spritzt Rufer von Spieler:in 1.
 
 Im Folgenden wird auf die einzelnen Gruppen genauer eingegangen.
 
@@ -60,6 +62,7 @@ Der obere und untere Talon wird ebenfalls durch ein `/` Symbol getrennt.
 
 Eine einzele Karte wird durch ihre Farbe und Wert angegeben.  
 Jede Farbe wird durch einen Buchstaben repräsentiert:
+
 | Farbe | Buchstabe |
 | --- | --- |
 | Herz | H |
@@ -70,6 +73,7 @@ Jede Farbe wird durch einen Buchstaben repräsentiert:
 
 Bei Karten mit Zahlenwerten wird die Zahl als Wert verwendet.  
 Bube, Kavall, Dame, König und Gstieß werden wiefolgt repräsentiert:
+
 | Wert | Buchstabe |
 | --- | --- |
 | Bube | B |
@@ -134,6 +138,12 @@ Beispiele:
 - Spieler:in 4 sagt Trischaken an: `T4---`
 - Spieler:in 4 spielt Zwiccolo ouvert: `PO24---`
 
+### Letzer Stich
+
+*Letzer Stich* gibt an wer den letzten Stich gemacht hat.
+Der letzte Stich wird mit den Zahlen 1 - 4 angegeben und bezieht sich auf die in [Karten](#karten) angegebenen Personen.
+Falls noch kein Stich gemacht wurde wird `-` angegeben.
+
 ### Ansagen
 
 Die *Ansagen* Gruppe umfasst Informationen über etwaige Ansagen die gemacht wurden.
@@ -172,5 +182,3 @@ Die *Kleinen stechen die Großen* Gruppe gibt an ob in dem Spiel "Die Kleinen st
 Falls es nicht angesagt wurde oder nicht anwendbar ist, wird `-` notiert.
 
 ### Spritzen
-
-
